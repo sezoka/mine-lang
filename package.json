@@ -1,0 +1,14 @@
+{
+  "name": "lang",
+  "module": "./src/main.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "scripts": {
+    "script": "bun run ./src/main.ts"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
