@@ -30,3 +30,44 @@ export function print_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.
   console.log(strings.join(" "));
   return ast.create_value(ast.Value_Kind.null, null);
 }
+
+export const append: ast.Value = ast.create_value(
+  ast.Value_Kind.func,
+  {
+    arity: -1,
+    fn: append_impl,
+    kind: func.My_Func_Kind.native,
+  });
+
+export function append_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.Value | null {
+  if (args.length < 2) {
+    console.error("invalid number of arguments for 'append', expect at least 2");
+    return null;
+  }
+  if (args[0].kind !== ast.Value_Kind.array) {
+    console.error("first argument of 'append' should be an array");
+    return null;
+  }
+  const arr = args[0].data as ast.Value[];
+  for (let i = 1; i < args.length; i += 1) {
+    arr.push(args[i]);
+  }
+  return ast.create_value(ast.Value_Kind.null, null);
+}
+
+export const len: ast.Value = ast.create_value(
+  ast.Value_Kind.func,
+  {
+    arity: 1,
+    fn: len_impl,
+    kind: func.My_Func_Kind.native,
+  });
+
+export function len_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.Value | null {
+  if (args[0].kind !== ast.Value_Kind.array) {
+    console.error("argument of 'len' should be an array");
+    return null;
+  }
+  const arr = args[0].data as ast.Value[];
+  return ast.create_value(ast.Value_Kind.int, arr.length);
+}

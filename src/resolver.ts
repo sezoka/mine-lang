@@ -65,6 +65,19 @@ function resolve_stmt(r: Resolver, stmt: ast.Stmt) {
 
 function resolve_expr(r: Resolver, expr: ast.Expr) {
   switch (expr.kind) {
+    case ast.Expr_Kind.array: {
+      const array = expr.value as ast.Array_Expr;
+      for (let i = 0; i < array.values.length; i += 1) {
+        resolve_expr(r, array.values[i]);
+      }
+      return;
+    }
+    case ast.Expr_Kind.index: {
+      const index = expr.value as ast.Index_Expr;
+      resolve_expr(r, index.arr);
+      resolve_expr(r, index.idx);
+      return;
+    }
     case ast.Expr_Kind.binary: {
       const binary = expr.value as ast.Binary_Expr;
       resolve_expr(r, binary.left);
@@ -103,7 +116,12 @@ function resolve_expr(r: Resolver, expr: ast.Expr) {
     case ast.Expr_Kind.assign: {
       const assign = expr.value as ast.Assign_Expr;
       resolve_expr(r, assign.value);
-      resolve_local(r, expr, assign.name);
+      if (assign.target.kind === ast.Expr_Kind.ident) {
+        const ident = assign.target.value as ast.Ident_Expr;
+        resolve_local(r, expr, ident.name);
+        return;
+      }
+      resolve_expr(r, assign.target);
       return;
     }
     case ast.Expr_Kind.logical: {

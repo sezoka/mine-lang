@@ -6,16 +6,36 @@
 # }
 
 
-create_counter :: (start) {
-  x :: start;
-  return () {
-    x = x + 1;
-    return x;
-  };
+# create_counter :: (start) {
+#   x :: start;
+#   return () {
+#     x = x + 1; return x;
+#   };
+# };
+
+# print(clock());
+
+
+map :: (arr, fn) {
+  result :: [];
+  for i :: 0; i < len(arr); i = i + 1 {
+    append(result, fn(arr[i]));
+  }
+  return result;
 };
 
-print(clock());
+main :: () {
+  arr :: [1, 2, 3, 4, 5];
+  mapped :: map(arr, (n) { n * n; });
+  for i :: 0; i < len(mapped); i = i + 1 {
+    print(mapped[i]);
+  }
+};
 
+
+main();
+
+# print(x[0]);
 
 # print(some_func(true) ++ " " ++ some_func(false));
 

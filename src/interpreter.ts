@@ -51,6 +51,8 @@ export function create(): Interpreter {
   const globals = env.create();
   env.define(globals, "clock", nf.clock)
   env.define(globals, "print", nf.print)
+  env.define(globals, "append", nf.append)
+  env.define(globals, "len", nf.len)
   return {
     globals,
     env: globals,
@@ -149,27 +151,64 @@ export function evaluate_block(int: Interpreter, stmts: ast.Stmt[], e: env.Envir
   return ret_val;
 }
 
-function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
+function eval_expr(inter: Interpreter, expr: ast.Expr): ast.Value | null {
   switch (expr.kind) {
+    case ast.Expr_Kind.array: {
+      const array = expr.value as ast.Array_Expr;
+      const values: ast.Value[] = new Array(array.values.length);
+      for (let i = 0; i < array.values.length; i += 1) {
+        const val = eval_expr(inter, array.values[i]);
+        if (val === null) return null;
+        values[i] = val;
+      }
+      return ast.create_value(ast.Value_Kind.array, values);
+    }
+    case ast.Expr_Kind.index: {
+      const index = expr.value as ast.Index_Expr;
+      const arr_expr = eval_expr(inter, index.arr);
+      if (arr_expr === null) return null;
+      const idx_expr = eval_expr(inter, index.idx);
+      if (idx_expr === null) return null;
+
+      if (idx_expr.kind !== ast.Value_Kind.int) {
+        err.runtime_error('[', expr.line, "can only index using integer value");
+        return null;
+      }
+
+      if (arr_expr.kind !== ast.Value_Kind.array) {
+        err.runtime_error('[', expr.line, "can only index into array value");
+        return null;
+      }
+
+      const idx = idx_expr.data as number;
+      const arr = arr_expr.data as ast.Value[];
+
+      if (idx < 0 || arr.length <= idx) {
+        err.runtime_error('[', expr.line, `index out of bounds. Length is ${arr.length}, index is ${idx}`);
+        return null;
+      }
+
+      return arr[idx];
+    }
     case ast.Expr_Kind.func: {
       const v = expr.value as ast.Func_Expr;
       const fn: func.My_Func = {
         kind: func.My_Func_Kind.user,
         arity: v.params.length,
-        fn: { declaration: v, closure: i.env }
+        fn: { declaration: v, closure: inter.env }
       }
       return ast.create_value(ast.Value_Kind.func, fn);
     }
     case ast.Expr_Kind.init: {
-      return eval_init(i, expr);
+      return eval_init(inter, expr);
     }
     case ast.Expr_Kind.call: {
       const v = expr.value as ast.Call_Expr;
-      const callee = eval_expr(i, v.callee);
+      const callee = eval_expr(inter, v.callee);
       if (callee === null) return null;
       const args: ast.Value[] = [];
       for (const arg_expr of v.args) {
-        const arg = eval_expr(i, arg_expr);
+        const arg = eval_expr(inter, arg_expr);
         if (arg === null) return arg;
         args.push(arg);
       }
@@ -180,7 +219,7 @@ function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
           return null;
         }
 
-        return func.call(i, fn, args);
+        return func.call(inter, fn, args);
       } else {
         err.runtime_error('(', expr.line, "can only call functions");
         return null;
@@ -188,26 +227,51 @@ function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
     }
     case ast.Expr_Kind.assign: {
       const v = expr.value as ast.Assign_Expr;
-      const value = eval_expr(i, v.value);
+      const value = eval_expr(inter, v.value);
       if (value === null) return null;
 
+      const target = v.target;
 
-      const distance = i.locals.get(expr);
-      if (distance !== undefined) {
-        env.assign_at(i.env, distance, v.name, value);
-      } else {
-        env.assign(i.globals, v.name, value, expr.line);
+      if (target.kind === ast.Expr_Kind.ident) {
+        const name = (target.value as ast.Ident_Expr).name;
+        const distance = inter.locals.get(expr);
+        if (distance !== undefined) {
+          env.assign_at(inter.env, distance, name, value);
+        } else {
+          env.assign(inter.globals, name, value, expr.line);
+        }
+      } else if (target.kind === ast.Expr_Kind.index) {
+        const index = target.value as ast.Index_Expr;
+        const arr_expr = eval_expr(inter, index.arr);
+        if (arr_expr === null) return null;
+        const idx_expr = eval_expr(inter, index.idx);
+        if (idx_expr === null) return null;
+
+        if (idx_expr.kind !== ast.Value_Kind.int) {
+          err.runtime_error('[', expr.line, "can only index using integer value");
+          return null;
+        }
+
+        if (arr_expr.kind !== ast.Value_Kind.array) {
+          err.runtime_error('[', expr.line, "can only index into array value");
+          return null;
+        }
+
+        const idx = idx_expr.data as number;
+        const arr = arr_expr.data as ast.Value[];
+
+        arr[idx] = value;
       }
 
       return value;
     }
     case ast.Expr_Kind.ident: {
       const v = expr.value as ast.Ident_Expr;
-      return look_up_variable(i, v.name, expr);
+      return look_up_variable(inter, v.name, expr);
     }
     case ast.Expr_Kind.unary: {
       const unary = expr.value as ast.Unary_Expr;
-      const right = eval_expr(i, unary.right);
+      const right = eval_expr(inter, unary.right);
       if (right === null) return null;
 
       switch (unary.op) {
@@ -221,8 +285,8 @@ function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
     }
     case ast.Expr_Kind.binary: {
       const binary = expr.value as ast.Binary_Expr;
-      const left = eval_expr(i, binary.left);
-      const right = eval_expr(i, binary.right);
+      const left = eval_expr(inter, binary.left);
+      const right = eval_expr(inter, binary.right);
       if (left === null) return null;
       if (right === null) return null;
 
@@ -271,22 +335,22 @@ function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
     }
     case ast.Expr_Kind.grouping: {
       const grouping = expr.value as ast.Grouping_Expr;
-      return eval_expr(i, grouping.expr);
+      return eval_expr(inter, grouping.expr);
     }
     case ast.Expr_Kind.if: {
       const if_expr = expr.value as ast.If_Expr;
-      const cond = eval_expr(i, if_expr.cond);
+      const cond = eval_expr(inter, if_expr.cond);
       if (cond === null) return null;
 
       if (is_truthy(cond)) {
-        return eval_expr(i, if_expr.then);
+        return eval_expr(inter, if_expr.then);
       } else {
-        return eval_expr(i, if_expr._else);
+        return eval_expr(inter, if_expr._else);
       }
     }
     case ast.Expr_Kind.logical: {
       const logical = expr.value as ast.Logical_Expr;
-      const left_result = eval_expr(i, logical.left);
+      const left_result = eval_expr(inter, logical.left);
       if (left_result === null) return null;
 
       if (logical.op === Token.or) {
@@ -295,7 +359,7 @@ function eval_expr(i: Interpreter, expr: ast.Expr): ast.Value | null {
         if (!is_truthy(left_result)) return ast.create_value(ast.Value_Kind.bool, false);
       }
 
-      const right_result = eval_expr(i, logical.right);
+      const right_result = eval_expr(inter, logical.right);
       if (right_result === null) return null;
 
       return ast.create_value(ast.Value_Kind.bool, is_truthy(right_result));

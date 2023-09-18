@@ -51,19 +51,30 @@ export enum Expr_Kind {
   literal = "literal",
   grouping = "grouping",
   if = "ternary",
-  ident = "var",
+  ident = "ident",
   assign = "assign",
   logical = "logical",
   call = "call",
   init = "init",
   func = "func",
+  index = "index",
+  array = "array",
 };
 
 export type Expr = {
   line: number,
   kind: Expr_Kind,
-  value: Binary_Expr | Unary_Expr | Literal_Expr | Grouping_Expr | If_Expr | Ident_Expr | Assign_Expr | Logical_Expr | Call_Expr | Init_Expr | Func_Expr,
+  value: Binary_Expr | Unary_Expr | Literal_Expr | Grouping_Expr | If_Expr | Ident_Expr | Assign_Expr | Logical_Expr | Call_Expr | Init_Expr | Func_Expr | Index_Expr | Array_Expr,
 };
+
+export type Index_Expr = {
+  arr: Expr,
+  idx: Expr,
+}
+
+export type Array_Expr = {
+  values: Expr[],
+}
 
 export type Func_Expr = {
   params: Ident_Expr[],
@@ -87,7 +98,7 @@ export type Logical_Expr = {
 };
 
 export type Assign_Expr = {
-  name: string,
+  target: Expr,
   value: Expr,
 };
 
@@ -131,9 +142,10 @@ export enum Value_Kind {
   int = "<int>",
   float = "<float>",
   func = "<function>",
+  array = "<array>",
 }
 
-export type Value_Data = boolean | null | string | number | func.My_Func;
+export type Value_Data = boolean | null | string | number | func.My_Func | Value[];
 
 export type Value = {
   kind: Value_Kind,
@@ -142,6 +154,14 @@ export type Value = {
 
 export function create_bin_expr(line: number, left: Expr, op: Token, right: Expr): Expr {
   return { line, kind: Expr_Kind.binary, value: { left, op, right } }
+}
+
+export function create_index_expr(line: number, arr: Expr, idx: Expr): Expr {
+  return { line, kind: Expr_Kind.index, value: { arr, idx } }
+}
+
+export function create_array_expr(line: number, values: Expr[]): Expr {
+  return { line, kind: Expr_Kind.array, value: { values } }
 }
 
 export function create_unary_expr(line: number, op: Token, right: Expr): Expr {
@@ -164,8 +184,8 @@ export function create_ident_expr(line: number, name: string): Expr {
   return { line, kind: Expr_Kind.ident, value: { name } };
 }
 
-export function create_assign_expr(line: number, name: string, value: Expr): Expr {
-  return { line, kind: Expr_Kind.assign, value: { name, value } };
+export function create_assign_expr(line: number, target: Expr, value: Expr): Expr {
+  return { line, kind: Expr_Kind.assign, value: { target, value } };
 }
 
 export function create_value(kind: Value_Kind, data: Value_Data): Value {

@@ -223,9 +223,8 @@ function parse_assignment(p: Parser): ast.Expr | null {
     const value = parse_assignment(p);
     if (value === null) return null;
 
-    if (expr.kind === ast.Expr_Kind.ident) {
-      const name = (expr.value as ast.Ident_Expr).name;
-      return ast.create_assign_expr(var_line, name, value);
+    if (expr.kind === ast.Expr_Kind.ident || expr.kind === ast.Expr_Kind.index) {
+      return ast.create_assign_expr(var_line, expr, value);
     }
 
     err.parse_error(var_literal, var_line, "Invalid assignment target");
@@ -279,18 +278,51 @@ function parse_equality(p: Parser): ast.Expr | null {
 }
 
 function parse_comparison(p: Parser): ast.Expr | null {
-  let left = parse_term(p);
+  let left = parse_index(p);
   if (left === null) return null;
 
   while (match(p, Token.greater, Token.greater_equal, Token.less, Token.less_equal)) {
     const op = p.prev_token;
     const line = p.scanner.line;
-    const right = parse_term(p);
+    const right = parse_index(p);
     if (right === null) return null;
     left = ast.create_bin_expr(line, left, op, right);
   }
 
   return left;
+}
+
+function parse_index(p: Parser): ast.Expr | null {
+  const arr = parse_array(p);
+  if (arr === null) return synchronize(p);
+
+  const line = p.scanner.line;
+  if (match(p, Token.left_bracket)) {
+    const idx = parse_expression(p);
+    if (idx === null) return synchronize(p);
+    consume(p, Token.right_bracket, "expect ']' after index expression");
+    return ast.create_index_expr(line, arr, idx);
+  }
+  return arr;
+}
+
+function parse_array(p: Parser): ast.Expr | null {
+  if (match(p, Token.left_bracket)) {
+    const line = p.scanner.prev_line;
+    const values: ast.Expr[] = [];
+    if (!check(p, Token.right_bracket)) {
+      do {
+        const val = parse_expression(p);
+        if (val === null) return synchronize(p);
+        values.push(val);
+      } while (match(p, Token.comma));
+    }
+    if (consume(p, Token.right_bracket, "Expect ']' after array values") === null) return synchronize(p);
+
+    return ast.create_array_expr(line, values);
+  }
+
+  return parse_term(p);
 }
 
 function parse_term(p: Parser): ast.Expr | null {
