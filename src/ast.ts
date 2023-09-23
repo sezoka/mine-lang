@@ -143,13 +143,19 @@ export enum Value_Kind {
   float = "<float>",
   func = "<function>",
   array = "<array>",
+  entry = "<entry>",
 }
 
-export type Value_Data = boolean | null | string | number | func.My_Func | Value[];
+export type Value_Data = boolean | null | string | number | func.My_Func | Value[] | Entry;
 
 export type Value = {
   kind: Value_Kind,
   data: Value_Data,
+};
+
+export type Entry = {
+  target: Value,
+  key: Value,
 };
 
 export function create_bin_expr(line: number, left: Expr, op: Token, right: Expr): Expr {

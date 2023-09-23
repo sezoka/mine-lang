@@ -15,25 +15,22 @@
 
 # print(clock());
 
+# arr :: [1, 2, 3];
 
-map :: (arr, fn) {
-  result :: [];
-  for i :: 0; i < len(arr); i = i + 1 {
-    append(result, fn(arr[i]));
-  }
-  return result;
-};
+a :: () { 123; };
+print(a);
 
-main :: () {
-  arr :: [1, 2, 3, 4, 5];
-  mapped :: map(arr, (n) { n * n; });
-  for i :: 0; i < len(mapped); i = i + 1 {
-    print(mapped[i]);
-  }
-};
+# f :: () {
+#   arr;
+# };
 
+# for i :: 0; i < len(arr); i = i + 1 {
+#     (f()[i]) = i;
+# }
 
-main();
+# for i :: 0; i < len(arr); i = i + 1 {
+#   print(arr[i]);
+# }
 
 # print(x[0]);
 

@@ -152,6 +152,22 @@ export function evaluate_block(int: Interpreter, stmts: ast.Stmt[], e: env.Envir
 }
 
 function eval_expr(inter: Interpreter, expr: ast.Expr): ast.Value | null {
+  const val = eval_expr_without_unwrap(inter, expr);
+  if (val === null) return null;
+  return unwrap_entry(val);
+}
+
+function unwrap_entry(val: ast.Value): ast.Value {
+  if (val.kind === ast.Value_Kind.entry) {
+    const entry = val.data as ast.Entry;
+    const arr = entry.target.data as ast.Value[];
+    const idx = entry.key.data as number;
+    return arr[idx];
+  }
+  return val;
+}
+
+function eval_expr_without_unwrap(inter: Interpreter, expr: ast.Expr): ast.Value | null {
   switch (expr.kind) {
     case ast.Expr_Kind.array: {
       const array = expr.value as ast.Array_Expr;
@@ -188,7 +204,8 @@ function eval_expr(inter: Interpreter, expr: ast.Expr): ast.Value | null {
         return null;
       }
 
-      return arr[idx];
+      return ast.create_value(ast.Value_Kind.entry,
+        { target: ast.create_value(ast.Value_Kind.array, arr), key: ast.create_value(ast.Value_Kind.int, idx) });
     }
     case ast.Expr_Kind.func: {
       const v = expr.value as ast.Func_Expr;
@@ -241,26 +258,23 @@ function eval_expr(inter: Interpreter, expr: ast.Expr): ast.Value | null {
           env.assign(inter.globals, name, value, expr.line);
         }
       } else if (target.kind === ast.Expr_Kind.index) {
-        const index = target.value as ast.Index_Expr;
-        const arr_expr = eval_expr(inter, index.arr);
-        if (arr_expr === null) return null;
-        const idx_expr = eval_expr(inter, index.idx);
-        if (idx_expr === null) return null;
+        const entry_val = eval_expr_without_unwrap(inter, target);
+        if (entry_val === null) return null;
 
-        if (idx_expr.kind !== ast.Value_Kind.int) {
-          err.runtime_error('[', expr.line, "can only index using integer value");
-          return null;
-        }
-
-        if (arr_expr.kind !== ast.Value_Kind.array) {
+        if (entry_val.kind !== ast.Value_Kind.entry) {
           err.runtime_error('[', expr.line, "can only index into array value");
           return null;
         }
 
-        const idx = idx_expr.data as number;
-        const arr = arr_expr.data as ast.Value[];
+        const entry = entry_val.data as ast.Entry;
+
+        const idx = entry.key.data as number;
+        const arr = entry.target.data as ast.Value[];
 
         arr[idx] = value;
+      } else {
+        err.runtime_error('=', expr.line, "lhs expression of '=' operator should be index([]) expression or indentifier");
+        return null;
       }
 
       return value;

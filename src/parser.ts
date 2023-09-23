@@ -189,25 +189,46 @@ function parse_expression(p: Parser): ast.Expr | null {
 function parse_func(p: Parser): ast.Expr | null {
   if (match(p, Token.left_paren)) {
     const line = p.scanner.prev_line;
-    const params: ast.Ident_Expr[] = [];
+    const params: ast.Expr[] = [];
+    let is_all_params_idents = true;
+    let is_multiple_params = false;
+    let wrong_param_lexeme: string | null = null;
     if (!check(p, Token.right_paren)) {
       do {
         const param = parse_primary(p);
-        const lexeme = p.scanner.lexeme;
-        const line = p.scanner.line;
         if (param === null) return synchronize(p);
         if (param.kind !== ast.Expr_Kind.ident) {
-          err.runtime_error(lexeme, line, "expect parameter name");
-          return synchronize(p);
+          if (is_all_params_idents) is_all_params_idents = false;
+          if (wrong_param_lexeme === null) wrong_param_lexeme = p.scanner.lexeme;
         }
-        params.push(param.value as ast.Ident_Expr);
+        params.push(param);
+        if (is_multiple_params && wrong_param_lexeme) {
+          err.parse_error(wrong_param_lexeme, p.scanner.prev_line, "all function params should be identifiers");
+          return null;
+        };
+        if (check(p, Token.comma)) is_multiple_params = true;
       } while (match(p, Token.comma));
     }
     consume(p, Token.right_paren, "expect ')' after parameters");
-    consume(p, Token.left_brace, "expect '{' before function block");
-    const body = parse_block_statement(p);
-    if (body === null) return synchronize(p);
-    return ast.create_func_expr(line, params, body);
+
+    if (is_multiple_params && is_all_params_idents) {
+      consume(p, Token.left_brace, "expect '{' before function block");
+      const body = parse_block_statement(p);
+      if (body === null) return synchronize(p);
+      return ast.create_func_expr(line, params.map(p => p.value as ast.Ident_Expr), body);
+    }
+
+    if (!is_all_params_idents) {
+      return ast.create_grouping_expr(p.scanner.line, params[0]);
+    }
+
+    if (match(p, Token.left_brace)) {
+      const body = parse_block_statement(p);
+      if (body === null) return synchronize(p);
+      return ast.create_func_expr(line, params.map(p => p.value as ast.Ident_Expr), body);
+    }
+
+    return ast.create_grouping_expr(p.scanner.line, params[0]);
   }
 
   return parse_assignment(p);
@@ -217,18 +238,12 @@ function parse_assignment(p: Parser): ast.Expr | null {
   let expr = parse_or(p);
   if (expr === null) return null;
   const var_line = p.scanner.prev_line;
-  const var_literal = p.scanner.literal;
 
   if (match(p, Token.equal)) {
     const value = parse_assignment(p);
     if (value === null) return null;
 
-    if (expr.kind === ast.Expr_Kind.ident || expr.kind === ast.Expr_Kind.index) {
-      return ast.create_assign_expr(var_line, expr, value);
-    }
-
-    err.parse_error(var_literal, var_line, "Invalid assignment target");
-    return null;
+    return ast.create_assign_expr(var_line, expr, value);
   }
 
   return expr;
@@ -278,32 +293,18 @@ function parse_equality(p: Parser): ast.Expr | null {
 }
 
 function parse_comparison(p: Parser): ast.Expr | null {
-  let left = parse_index(p);
+  let left = parse_array(p);
   if (left === null) return null;
 
   while (match(p, Token.greater, Token.greater_equal, Token.less, Token.less_equal)) {
     const op = p.prev_token;
     const line = p.scanner.line;
-    const right = parse_index(p);
+    const right = parse_array(p);
     if (right === null) return null;
     left = ast.create_bin_expr(line, left, op, right);
   }
 
   return left;
-}
-
-function parse_index(p: Parser): ast.Expr | null {
-  const arr = parse_array(p);
-  if (arr === null) return synchronize(p);
-
-  const line = p.scanner.line;
-  if (match(p, Token.left_bracket)) {
-    const idx = parse_expression(p);
-    if (idx === null) return synchronize(p);
-    consume(p, Token.right_bracket, "expect ']' after index expression");
-    return ast.create_index_expr(line, arr, idx);
-  }
-  return arr;
 }
 
 function parse_array(p: Parser): ast.Expr | null {
@@ -402,8 +403,23 @@ function parse_if_expr(p: Parser): ast.Expr | null {
     return ast.create_if_expr(line, cond, then, _else);
 
   } else {
-    return parse_primary(p);
+    return parse_index(p);
   }
+}
+
+function parse_index(p: Parser): ast.Expr | null {
+  const arr = parse_primary(p);
+  if (arr === null) return synchronize(p);
+
+  const line = p.scanner.line;
+  if (match(p, Token.left_bracket)) {
+    const idx = parse_expression(p);
+    if (idx === null) return synchronize(p);
+    consume(p, Token.right_bracket, "expect ']' after index expression");
+    return ast.create_index_expr(line, arr, idx);
+  }
+
+  return arr;
 }
 
 function parse_primary(p: Parser): ast.Expr | null {
