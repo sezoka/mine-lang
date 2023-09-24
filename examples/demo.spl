@@ -1,0 +1,3 @@
+module1 :: import("./module1.spl");
+
+print(module1.module2.some_data);

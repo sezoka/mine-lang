@@ -22,17 +22,19 @@ export function create(src: string): Scanner {
 }
 
 const keywords = new Map([
+  ["and", token.Token.and],
   ["else", token.Token.else],
   ["false", token.Token.false],
+  ["fn", token.Token.fn],
   ["for", token.Token.for],
   ["if", token.Token.if],
   ["null", token.Token.null],
+  ["or", token.Token.or],
   ["return", token.Token.return],
   ["then", token.Token.then],
   ["true", token.Token.true],
   ["while", token.Token.while],
-  ["and", token.Token.and],
-  ["or", token.Token.or],
+  // ["import", token.Token.import],
 ])
 
 export function next_token(s: Scanner): token.Token | null {
@@ -53,12 +55,14 @@ export function next_token(s: Scanner): token.Token | null {
     case ')': return token.Token.right_paren
     case '[': return token.Token.left_bracket
     case ']': return token.Token.right_bracket
-    case '-': return token.Token.minus
     case ';': return token.Token.semicolon
-    case '/': return token.Token.slash
-    case '*': return token.Token.star
     case '#': return token.Token.hash
     case '@': return token.Token.at
+    case '+': return match(s, "=") ? token.Token.plus_equal :
+      match(s, "+") ? token.Token.concat : token.Token.plus
+    case '-': return match(s, "=") ? token.Token.minus_equal : token.Token.minus
+    case '*': return match(s, "=") ? token.Token.star_equal : token.Token.star
+    case '/': return match(s, "=") ? token.Token.slash_equal : token.Token.slash
     case ':': return match(s, ":") ? token.Token.init : token.Token.colon
     case '+': return match(s, "+") ? token.Token.concat : token.Token.plus
     case '!': return match(s, "=") ? token.Token.bang_equal : token.Token.bang

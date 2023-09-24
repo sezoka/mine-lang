@@ -1,6 +1,8 @@
 import * as interpreter from "./interpreter.ts";
 import * as ast from "./ast.ts";
 import * as func from "./func.ts";
+import path from "node:path";
+import { read_and_run_script } from "./main.ts";
 
 export const clock: ast.Value = ast.create_value(
   ast.Value_Kind.func,
@@ -70,4 +72,23 @@ export function len_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.Va
   }
   const arr = args[0].data as ast.Value[];
   return ast.create_value(ast.Value_Kind.int, arr.length);
+}
+
+export const import_builtin: ast.Value = ast.create_value(
+  ast.Value_Kind.func,
+  {
+    arity: 1,
+    fn: import_builtin_impl,
+    kind: func.My_Func_Kind.native,
+  });
+
+export function import_builtin_impl(inter: interpreter.Interpreter, args: ast.Value[]): ast.Value | null {
+  if (args[0].kind !== ast.Value_Kind.string) {
+    console.error("argument of '@import' should be a file path");
+    return null;
+  }
+  const dirpath = path.dirname(path.resolve(inter.source_path));
+  const env = read_and_run_script(path.resolve(dirpath, args[0].data as string));
+  if (env === null) return null;
+  return ast.create_value(ast.Value_Kind.namespace, { env });
 }

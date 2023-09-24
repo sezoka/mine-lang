@@ -7,6 +7,7 @@ import { Token } from "./token.ts";
 
 
 export type Interpreter = {
+  source_path: string,
   env: env.Environment,
   globals: env.Environment,
   locals: Map<ast.Expr, number>,
@@ -47,13 +48,15 @@ export function is_fail(v: Result): boolean {
   return v.kind === Result_Kind.fail;
 }
 
-export function create(): Interpreter {
+export function create(source_path: string): Interpreter {
   const globals = env.create();
   env.define(globals, "clock", nf.clock)
   env.define(globals, "print", nf.print)
   env.define(globals, "append", nf.append)
   env.define(globals, "len", nf.len)
+  env.define(globals, "import", nf.import_builtin)
   return {
+    source_path,
     globals,
     env: globals,
     locals: new Map(),
@@ -61,11 +64,12 @@ export function create(): Interpreter {
 }
 
 
-export function interpret(i: Interpreter, a: ast.Ast) {
+export function interpret(i: Interpreter, a: ast.Ast): env.Environment | null {
   for (const expr of a.statements) {
     const ok = evaluate_stmt(i, expr);
-    if (is_fail(ok)) return;
+    if (is_fail(ok)) return null;
   }
+  return i.env;
 }
 
 function evaluate_stmt(i: Interpreter, stmt: ast.Stmt): Result {
@@ -169,6 +173,22 @@ function unwrap_entry(val: ast.Value): ast.Value {
 
 function eval_expr_without_unwrap(inter: Interpreter, expr: ast.Expr): ast.Value | null {
   switch (expr.kind) {
+    case ast.Expr_Kind.get: {
+      const get = expr.value as ast.Get_Expr;
+      const namespace = eval_expr(inter, get.namespace);
+      if (namespace === null) return null;
+      if (namespace.kind !== ast.Value_Kind.namespace) {
+        err.error_token(".", expr.line, "currently can only use '.' operator on namespaces");
+        return null;
+      }
+
+      const name = get.name;
+      const environment = (namespace.data as ast.Namespace).env;
+      const val = env.get(environment, name, expr.line);
+      if (val === null) return null;
+
+      return val;
+    }
     case ast.Expr_Kind.array: {
       const array = expr.value as ast.Array_Expr;
       const values: ast.Value[] = new Array(array.values.length);

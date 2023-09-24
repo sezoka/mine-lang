@@ -1,0 +1,4 @@
+print("hello from module2");
+
+some_data :: "I'm some data";
+

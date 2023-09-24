@@ -153,18 +153,18 @@ print(a / b);
 
 TEST funcs.spl:
 ---
-a :: () { 123; };
+a :: fn() { 123 };
 print(a());
 
-b :: (x) { return x; };
+b :: fn(x) { x };
 print(b(321));
 
-closure :: (start) {
+closure :: fn(start) {
   x :: start;
-  return () {
+  return fn() {
     temp :: x;
     x = x + 1;
-    return temp;
+    temp
   };
 };
 

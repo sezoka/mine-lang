@@ -21,7 +21,7 @@ export function parse(p: Parser): ast.Ast | null {
 
   while (!p.is_at_end) {
     const expr = parse_declaration(p);
-    if (expr === null) return null;
+    if (expr === null) return synchronize(p);
     statements.push(expr);
   }
 
@@ -59,7 +59,7 @@ function parse_statement(p: Parser): ast.Stmt | null {
   if (match(p, Token.left_brace)) {
     const line = p.scanner.prev_line;
     const stmts = parse_block_statement(p)
-    if (stmts === null) return null;
+    if (stmts === null) return synchronize(p);
     return ast.create_block_stmt(line, stmts);
   };
 
@@ -98,65 +98,65 @@ function parse_for(p: Parser): ast.Stmt | null {
 
   if (check(p, Token.left_brace) || match(p, Token.then)) {
     body = parse_statement(p);
-    if (body === null) return null;
+    if (body === null) return synchronize(p);
     return ast.create_for_stmt(line, null, null, null, body);
   }
 
   cond = parse_declaration_expr(p);
-  if (cond === null) return null;
+  if (cond === null) return synchronize(p);
 
   if (check(p, Token.left_brace) || match(p, Token.then)) {
     body = parse_statement(p);
-    if (body === null) return null;
+    if (body === null) return synchronize(p);
     const for_stmt = ast.create_for_stmt(line, null, cond, null, body);
     return ast.create_block_stmt(line, [for_stmt]);
   }
-  if (!consume(p, Token.semicolon, "expect ';' after conditional expression")) return null;
+  if (!consume(p, Token.semicolon, "expect ';' after conditional expression")) return synchronize(p);
 
   post = parse_expression(p);
-  if (post === null) return null;
+  if (post === null) return synchronize(p);
 
 
   if (check(p, Token.left_brace) || match(p, Token.then)) {
     body = parse_statement(p);
-    if (body === null) return null;
+    if (body === null) return synchronize(p);
     const for_stmt = ast.create_for_stmt(line, null, cond, post, body);
     return ast.create_block_stmt(line, [for_stmt]);
   }
-  if (!consume(p, Token.semicolon, "expect ';' after iterative expression")) return null;
+  if (!consume(p, Token.semicolon, "expect ';' after iterative expression")) return synchronize(p);
 
   init = cond;
   cond = post;
 
   post = parse_expression(p);
-  if (init === null) return null;
+  if (init === null) return synchronize(p);
 
   if (check(p, Token.left_brace) || match(p, Token.then)) {
     body = parse_statement(p);
-    if (body === null) return null;
+    if (body === null) return synchronize(p);
     const for_stmt = ast.create_for_stmt(line, init, cond, post, body);
     return ast.create_block_stmt(line, [for_stmt]);
   }
 
   err.parse_error(p.scanner.lexeme, line, "expect '{' or 'then' after iterative expression");
 
-  return null;
+  return synchronize(p);
 }
 
 function parse_if_stmt(p: Parser): ast.Stmt | null {
   const cond = parse_expression(p);
-  if (cond === null) return null;
+  if (cond === null) return synchronize(p);
   const line = p.scanner.prev_line;
   if (!(check(p, Token.left_brace) || match(p, Token.then))) {
     err.parse_error(p.scanner.lexeme, p.scanner.prev_line, "expect 'then' or '{' after conditional expression");
-    return null;
+    return synchronize(p);
   }
   const then_branch = parse_statement(p);
-  if (then_branch === null) return null;
+  if (then_branch === null) return synchronize(p);
   let else_branch: ast.Stmt | null = null;
   if (match(p, Token.else)) {
     else_branch = parse_statement(p);
-    if (else_branch === null) return null;
+    if (else_branch === null) return synchronize(p);
   }
   return ast.create_if_stmt(line, cond, then_branch, else_branch);
 }
@@ -166,20 +166,31 @@ function parse_block_statement(p: Parser): ast.Stmt[] | null {
 
   while (!check(p, Token.right_brace) && !p.is_at_end) {
     const stmt = parse_declaration(p)
-    if (stmt === null) return null;
+    if (stmt === null) return synchronize(p);
     statements.push(stmt);
   }
 
-  if (!consume(p, Token.right_brace, "expect '}' after block")) return null;
+  if (!consume(p, Token.right_brace, "expect '}' after block")) return synchronize(p);
   return statements;
 }
+
+// function parse_expr_stmt(p: Parser): ast.Stmt | null {
+//   const line = p.scanner.line;
+//   const expr = parse_expression(p);
+//   if (expr === null) return null;
+//   if (!consume(p, Token.semicolon, "Expect ';' at the end of expression.")) return null;
+//   return ast.create_expr_stmt(line, expr);
+// }
 
 function parse_expr_stmt(p: Parser): ast.Stmt | null {
   const line = p.scanner.line;
   const expr = parse_expression(p);
-  if (expr === null) return null;
-  if (!consume(p, Token.semicolon, "Expect ';' at the end of expression.")) return null;
-  return ast.create_expr_stmt(line, expr);
+  if (expr === null) return synchronize(p);
+  if (check(p, Token.right_brace)) {
+    return ast.create_expr_stmt(line, expr);
+  }
+  if (!consume(p, Token.semicolon, "Expect ';' at the end of expression.")) return synchronize(p);
+  return ast.create_block_stmt(line, [ast.create_expr_stmt(line, expr), ast.create_expr_stmt(line, ast.create_literal_expr(line, ast.create_value(ast.Value_Kind.null, null)))]);
 }
 
 function parse_expression(p: Parser): ast.Expr | null {
@@ -187,48 +198,26 @@ function parse_expression(p: Parser): ast.Expr | null {
 }
 
 function parse_func(p: Parser): ast.Expr | null {
-  if (match(p, Token.left_paren)) {
+  if (match(p, Token.fn)) {
+    if (!consume(p, Token.left_paren, "expect '(' after parameters")) return synchronize(p);
     const line = p.scanner.prev_line;
-    const params: ast.Expr[] = [];
-    let is_all_params_idents = true;
-    let is_multiple_params = false;
-    let wrong_param_lexeme: string | null = null;
+    const params: ast.Ident_Expr[] = [];
     if (!check(p, Token.right_paren)) {
       do {
-        const param = parse_primary(p);
+        const param = parse_expression(p);
         if (param === null) return synchronize(p);
         if (param.kind !== ast.Expr_Kind.ident) {
-          if (is_all_params_idents) is_all_params_idents = false;
-          if (wrong_param_lexeme === null) wrong_param_lexeme = p.scanner.lexeme;
+          err.parse_error(p.scanner.lexeme, p.scanner.prev_line, "all function params should be identifiers");
+          return synchronize(p);
         }
-        params.push(param);
-        if (is_multiple_params && wrong_param_lexeme) {
-          err.parse_error(wrong_param_lexeme, p.scanner.prev_line, "all function params should be identifiers");
-          return null;
-        };
-        if (check(p, Token.comma)) is_multiple_params = true;
+        params.push(param.value as ast.Ident_Expr);
       } while (match(p, Token.comma));
     }
     consume(p, Token.right_paren, "expect ')' after parameters");
-
-    if (is_multiple_params && is_all_params_idents) {
-      consume(p, Token.left_brace, "expect '{' before function block");
-      const body = parse_block_statement(p);
-      if (body === null) return synchronize(p);
-      return ast.create_func_expr(line, params.map(p => p.value as ast.Ident_Expr), body);
-    }
-
-    if (!is_all_params_idents) {
-      return ast.create_grouping_expr(p.scanner.line, params[0]);
-    }
-
-    if (match(p, Token.left_brace)) {
-      const body = parse_block_statement(p);
-      if (body === null) return synchronize(p);
-      return ast.create_func_expr(line, params.map(p => p.value as ast.Ident_Expr), body);
-    }
-
-    return ast.create_grouping_expr(p.scanner.line, params[0]);
+    consume(p, Token.left_brace, "expect '{' before function block");
+    const body = parse_block_statement(p);
+    if (body === null) return synchronize(p);
+    return ast.create_func_expr(line, params, body);
   }
 
   return parse_assignment(p);
@@ -236,12 +225,20 @@ function parse_func(p: Parser): ast.Expr | null {
 
 function parse_assignment(p: Parser): ast.Expr | null {
   let expr = parse_or(p);
-  if (expr === null) return null;
+  if (expr === null) return synchronize(p);
   const var_line = p.scanner.prev_line;
 
-  if (match(p, Token.equal)) {
-    const value = parse_assignment(p);
-    if (value === null) return null;
+  if (match(p, Token.equal, Token.plus_equal, Token.minus_equal, Token.star_equal, Token.slash_equal)) {
+    const op = p.prev_token;
+    let value = parse_assignment(p);
+    if (value === null) return synchronize(p);
+
+    switch (op) {
+      case Token.plus_equal: value = ast.create_bin_expr(var_line, expr, Token.plus, value); break;
+      case Token.minus_equal: value = ast.create_bin_expr(var_line, expr, Token.minus, value); break;
+      case Token.star_equal: value = ast.create_bin_expr(var_line, expr, Token.star, value); break;
+      case Token.slash_equal: value = ast.create_bin_expr(var_line, expr, Token.slash, value); break;
+    }
 
     return ast.create_assign_expr(var_line, expr, value);
   }
@@ -279,13 +276,13 @@ function parse_and(p: Parser): ast.Expr | null {
 
 function parse_equality(p: Parser): ast.Expr | null {
   let left = parse_comparison(p);
-  if (left === null) return null;
+  if (left === null) return synchronize(p);
 
   while (match(p, Token.bang_equal, Token.equal_equal)) {
     const op = p.prev_token;
     const line = p.scanner.line;
     const right = parse_comparison(p);
-    if (right === null) return null;
+    if (right === null) return synchronize(p);
     left = ast.create_bin_expr(line, left, op, right);
   }
 
@@ -294,13 +291,13 @@ function parse_equality(p: Parser): ast.Expr | null {
 
 function parse_comparison(p: Parser): ast.Expr | null {
   let left = parse_array(p);
-  if (left === null) return null;
+  if (left === null) return synchronize(p);
 
   while (match(p, Token.greater, Token.greater_equal, Token.less, Token.less_equal)) {
     const op = p.prev_token;
     const line = p.scanner.line;
     const right = parse_array(p);
-    if (right === null) return null;
+    if (right === null) return synchronize(p);
     left = ast.create_bin_expr(line, left, op, right);
   }
 
@@ -328,13 +325,13 @@ function parse_array(p: Parser): ast.Expr | null {
 
 function parse_term(p: Parser): ast.Expr | null {
   let left = parse_factor(p);
-  if (left === null) return null;
+  if (left === null) return synchronize(p);
 
   while (match(p, Token.plus, Token.minus)) {
     const op = p.prev_token;
     const line = p.scanner.line;
     const right = parse_factor(p);
-    if (right === null) return null;
+    if (right === null) return synchronize(p);
     left = ast.create_bin_expr(line, left, op, right);
   }
 
@@ -343,13 +340,13 @@ function parse_term(p: Parser): ast.Expr | null {
 
 function parse_factor(p: Parser): ast.Expr | null {
   let left = parse_unary(p);
-  if (left === null) return null;
+  if (left === null) return synchronize(p);
 
   while (match(p, Token.star, Token.slash, Token.concat)) {
     const op = p.prev_token;
     const line = p.scanner.line;
     const right = parse_unary(p);
-    if (right === null) return null;
+    if (right === null) return synchronize(p);
     left = ast.create_bin_expr(line, left, op, right);
   }
 
@@ -362,7 +359,7 @@ function parse_unary(p: Parser): ast.Expr | null {
     const op = p.prev_token;
     const line = p.scanner.line;
     const right = parse_unary(p);
-    if (right === null) return null;
+    if (right === null) return synchronize(p);
     return ast.create_unary_expr(line, op, right);
   }
 
@@ -370,36 +367,46 @@ function parse_unary(p: Parser): ast.Expr | null {
 }
 
 function parse_call_expr(p: Parser): ast.Expr | null {
-  const callee = parse_if_expr(p);
-  if (callee === null) return null;
-  const line = p.scanner.prev_line;
-  if (match(p, Token.left_paren)) {
-    const args: ast.Expr[] = [];
-    if (!check(p, Token.right_paren)) {
-      do {
-        const arg = parse_expression(p);
-        if (arg === null) return null;
-        args.push(arg);
-      } while (match(p, Token.comma));
+  let expr = parse_if_expr(p);
+  if (expr === null) return synchronize(p);
+
+  for (; ;) {
+    const line = p.scanner.line;
+    if (match(p, Token.left_paren)) {
+      const args: ast.Expr[] = [];
+      if (!check(p, Token.right_paren)) {
+        do {
+          const arg = parse_expression(p);
+          if (arg === null) return synchronize(p);
+          args.push(arg);
+        } while (match(p, Token.comma));
+      }
+      consume(p, Token.right_paren, "Expect ')' after arguments");
+      expr = ast.create_call_expr(line, expr, args);
+    } else if (match(p, Token.dot)) {
+      consume(p, Token.ident, "expect property name after '.'");
+      const name = p.scanner.literal;
+      expr = ast.create_get_expr(line, expr, name);
+      if (expr === null) return null;
+    } else {
+      break;
     }
-    consume(p, Token.right_paren, "Expect ')' after arguments");
-    return ast.create_call_expr(line, callee, args);
   }
 
-  return callee;
+  return expr;
 }
 
 function parse_if_expr(p: Parser): ast.Expr | null {
   if (match(p, Token.if)) {
     const line = p.scanner.prev_line;
     const cond = parse_expression(p);
-    if (cond === null) return null;
-    if (!consume(p, Token.then, "expected 'then' after conditional expression")) return null;
+    if (cond === null) return synchronize(p);
+    if (!consume(p, Token.then, "expected 'then' after conditional expression")) return synchronize(p);
     const then = parse_expression(p);
-    if (then === null) return null;
-    if (!consume(p, Token.else, "expected 'else' after then expression")) return null;
+    if (then === null) return synchronize(p);
+    if (!consume(p, Token.else, "expected 'else' after then expression")) return synchronize(p);
     const _else = parse_expression(p);
-    if (_else === null) return null;
+    if (_else === null) return synchronize(p);
     return ast.create_if_expr(line, cond, then, _else);
 
   } else {
@@ -443,15 +450,15 @@ function parse_primary(p: Parser): ast.Expr | null {
 
   if (match(p, Token.left_paren)) {
     const expr = parse_expression(p);
-    if (expr === null) return null;
-    if (!consume(p, Token.right_paren, "Expect ')' after expression.")) return null;
+    if (expr === null) return synchronize(p);
+    if (!consume(p, Token.right_paren, "Expect ')' after expression.")) return synchronize(p);
     return ast.create_grouping_expr(p.scanner.line, expr);
   }
 
   console.log(p.prev_token, p.curr_token)
 
   err.parse_error(p.scanner.lexeme, p.scanner.prev_line, "Expect expression.");
-  return null;
+  return synchronize(p);
 }
 
 function consume(p: Parser, tok: Token, msg: string): Token | null {

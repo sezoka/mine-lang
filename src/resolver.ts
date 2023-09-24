@@ -65,6 +65,11 @@ function resolve_stmt(r: Resolver, stmt: ast.Stmt) {
 
 function resolve_expr(r: Resolver, expr: ast.Expr) {
   switch (expr.kind) {
+    case ast.Expr_Kind.get: {
+      const get = expr.value as ast.Get_Expr;
+      resolve_expr(r, get.namespace);
+      return;
+    }
     case ast.Expr_Kind.array: {
       const array = expr.value as ast.Array_Expr;
       for (let i = 0; i < array.values.length; i += 1) {

@@ -1,5 +1,6 @@
 import { Token } from "./token";
 import * as func from "./func.ts";
+import * as env from "./env.ts";
 
 export type Ast = {
   statements: Stmt[],
@@ -59,12 +60,18 @@ export enum Expr_Kind {
   func = "func",
   index = "index",
   array = "array",
+  get = "get",
 };
 
 export type Expr = {
   line: number,
   kind: Expr_Kind,
-  value: Binary_Expr | Unary_Expr | Literal_Expr | Grouping_Expr | If_Expr | Ident_Expr | Assign_Expr | Logical_Expr | Call_Expr | Init_Expr | Func_Expr | Index_Expr | Array_Expr,
+  value: Binary_Expr | Unary_Expr | Literal_Expr | Grouping_Expr | If_Expr | Ident_Expr | Assign_Expr | Logical_Expr | Call_Expr | Init_Expr | Func_Expr | Index_Expr | Array_Expr | Get_Expr,
+};
+
+export type Get_Expr = {
+  name: string;
+  namespace: Expr;
 };
 
 export type Index_Expr = {
@@ -144,9 +151,14 @@ export enum Value_Kind {
   func = "<function>",
   array = "<array>",
   entry = "<entry>",
+  namespace = "<namespace>"
 }
 
-export type Value_Data = boolean | null | string | number | func.My_Func | Value[] | Entry;
+export type Value_Data = boolean | null | string | number | func.My_Func | Value[] | Entry | Namespace;
+
+export type Namespace = {
+  env: env.Environment,
+};
 
 export type Value = {
   kind: Value_Kind,
@@ -228,6 +240,10 @@ export function create_logical_expr(line: number, op: Token, left: Expr, right: 
 
 export function create_call_expr(line: number, callee: Expr, args: Expr[]): Expr {
   return { line, kind: Expr_Kind.call, value: { callee, args } };
+}
+
+export function create_get_expr(line: number, namespace: Expr, name: string): Expr {
+  return { line, kind: Expr_Kind.get, value: { namespace, name } };
 }
 
 export function create_func_expr(line: number, params: Ident_Expr[], body: Stmt[]): Expr {
