@@ -83,7 +83,7 @@ export function next_token(s: Scanner): token.Token | null {
 
 function scan_identifier(s: Scanner): token.Token {
   const start = s.pos - 1;
-  while (is_alphanumeric(peek(s))) {
+  while (is_alphanumeric(peek(s)) || peek(s) === "_") {
     advance(s);
   }
   const end = s.pos;
@@ -149,9 +149,37 @@ function scan_string(s: Scanner): token.Token | null {
   const end = s.pos;
 
   advance(s);
-  s.lexeme = s.src.slice(start, end);
+  const lexeme = unescape_string(s.src.slice(start, end), s.line);
+  if (lexeme === null) return null;
+  s.lexeme = lexeme;
   s.literal = s.lexeme;
   return token.Token.string;
+}
+
+function unescape_string(str: string, line: number): string | null {
+  const chars = [];
+  let pos = 0;
+  while (pos < str.length) {
+    const char = str[pos];
+    const next_char = str[pos + 1];
+    if (char === "\\" && next_char !== undefined) {
+      if (next_char === "\\") {
+        chars.push("\\");
+      } else if (next_char === "n") {
+        chars.push("\n");
+      } else if (next_char === "\t") {
+        chars.push("\t");
+      } else {
+        err.error(line, `invalid escape sequence ${char + next_char}`);
+      }
+      pos += 1;
+    } else {
+      chars.push(char);
+    }
+    pos += 1;
+  }
+
+  return chars.join("");
 }
 
 function skip_whitespace(s: Scanner) {

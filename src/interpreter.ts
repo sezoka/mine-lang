@@ -52,6 +52,7 @@ export function create(source_path: string): Interpreter {
   const globals = env.create();
   env.define(globals, "clock", nf.clock)
   env.define(globals, "print", nf.print)
+  env.define(globals, "println", nf.println)
   env.define(globals, "append", nf.append)
   env.define(globals, "len", nf.len)
   env.define(globals, "import", nf.import_builtin)

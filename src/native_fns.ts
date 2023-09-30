@@ -1,8 +1,10 @@
 import * as interpreter from "./interpreter.ts";
 import * as ast from "./ast.ts";
 import * as func from "./func.ts";
+import * as fs from "node:fs";
 import path from "node:path";
 import { read_and_run_script } from "./main.ts";
+import * as process from "node:process";
 
 export const clock: ast.Value = ast.create_value(
   ast.Value_Kind.func,
@@ -29,7 +31,24 @@ export function print_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.
   for (let i = 0; i < args.length; i += 1) {
     strings[i] = interpreter.stringify(args[i]);
   }
-  console.log(strings.join(" "));
+  process.stdout.write(strings.join(" "));
+  return ast.create_value(ast.Value_Kind.null, null);
+}
+
+export const println: ast.Value = ast.create_value(
+  ast.Value_Kind.func,
+  {
+    arity: -1,
+    fn: println_impl,
+    kind: func.My_Func_Kind.native,
+  });
+
+export function println_impl(_i: interpreter.Interpreter, args: ast.Value[]): ast.Value | null {
+  const strings = new Array(args.length);
+  for (let i = 0; i < args.length; i += 1) {
+    strings[i] = interpreter.stringify(args[i]);
+  }
+  process.stdout.write(strings.join(" ") + "\n");
   return ast.create_value(ast.Value_Kind.null, null);
 }
 
